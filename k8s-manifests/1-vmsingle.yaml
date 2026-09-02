@@ -1,0 +1,23 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMSingle
+metadata:
+  name: vm-backend
+  namespace: monitoring-system
+spec:
+  nodeSelector:
+    kubernetes.io/hostname: soleimani-ha2
+  retentionPeriod: "7d"
+  resources:
+    requests:
+      cpu: "20m"
+      memory: "64Mi"
+    limits:
+      cpu: "150m"
+      memory: "256Mi"
+  storage:
+    storageClassName: local-path
+    accessModes:
+      - ReadWriteOnce
+    resources:
+      requests:
+        storage: 4Gi

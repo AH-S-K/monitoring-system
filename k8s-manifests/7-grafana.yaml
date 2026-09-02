@@ -1,0 +1,140 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-data
+  namespace: monitoring-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: monitoring-system
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    deleteDatasources:
+      - name: VictoriaMetrics
+        orgId: 1
+    datasources:
+      - name: VictoriaMetrics
+        type: prometheus
+        uid: victoriametrics
+        access: proxy
+        orgId: 1
+        url: http://vmauth-vmauth-gateway.monitoring-system.svc.cluster.local:8427
+        basicAuth: true
+        basicAuthUser: admin
+        secureJsonData:
+          basicAuthPassword: "${VM_AUTH_PASSWORD}"
+        isDefault: true
+        editable: true
+        jsonData:
+          timeInterval: 15s
+          httpMethod: POST
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: monitoring-system
+  labels:
+    app: grafana
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: soleimani-ha2
+      securityContext:
+        fsGroup: 472
+      containers:
+        - name: grafana
+          image: grafana/grafana:13.2.1
+          ports:
+            - containerPort: 3000
+              name: http
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: monitoring-secrets
+                  key: GRAFANA_ADMIN_USER
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: monitoring-secrets
+                  key: GRAFANA_ADMIN_PASSWORD
+            - name: VM_AUTH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: monitoring-secrets
+                  key: VM_ADMIN_PASSWORD
+            - name: GF_USERS_ALLOW_SIGN_UP
+              value: "false"
+            - name: GF_SERVER_ROOT_URL
+              value: "http://soleimani.osdl.ir/grafana/"
+            - name: GF_SERVER_SERVE_FROM_SUB_PATH
+              value: "true"
+            - name: GF_ANALYTICS_REPORTING_ENABLED
+              value: "false"
+            - name: GF_ANALYTICS_CHECK_FOR_UPDATES
+              value: "false"
+          volumeMounts:
+            - name: datasource-volume
+              mountPath: /etc/grafana/provisioning/datasources
+            - name: grafana-storage
+              mountPath: /var/lib/grafana
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "150Mi"
+            limits:
+              cpu: "500m"
+              memory: "800Mi"
+          readinessProbe:
+            httpGet:
+              path: /grafana/api/health
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /grafana/api/health
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 15
+      volumes:
+        - name: datasource-volume
+          configMap:
+            name: grafana-datasources
+        - name: grafana-storage
+          persistentVolumeClaim:
+            claimName: grafana-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: monitoring-system
+spec:
+  selector:
+    app: grafana
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000

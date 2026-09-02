@@ -1,0 +1,15 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMStaticScrape
+metadata:
+  name: django-scrape
+  namespace: monitoring-system
+spec:
+  targetEndpoints:
+    - targets:
+        - "django-api.django-k8s-manager.svc.cluster.local:80"
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      labels:
+        app: django-api
+        job: django-api

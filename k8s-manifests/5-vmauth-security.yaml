@@ -1,0 +1,32 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMUser
+metadata:
+  name: admin-user
+  namespace: monitoring-system
+spec:
+  username: admin
+  passwordRef:
+    name: monitoring-secrets
+    key: VM_ADMIN_PASSWORD
+  targetRefs:
+    - crd:
+        kind: VMSingle
+        name: vm-backend
+        namespace: monitoring-system
+      paths: ["/api/v1/.*", "/vmui.*", "/prometheus/.*", "/"]
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMAuth
+metadata:
+  name: vmauth-gateway
+  namespace: monitoring-system
+spec:
+  replicaCount: 1
+  selectAllByDefault: true
+  resources:
+    requests:
+      cpu: "5m"
+      memory: "16Mi"
+    limits:
+      cpu: "50m"
+      memory: "40Mi"

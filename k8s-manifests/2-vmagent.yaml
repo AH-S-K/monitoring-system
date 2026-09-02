@@ -1,0 +1,19 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMAgent
+metadata:
+  name: vmagent
+  namespace: monitoring-system
+spec:
+  replicaCount: 1
+  selectAllByDefault: true
+  serviceScrapeNamespaceSelector: {}
+  scrapeInterval: 30s
+  remoteWrite:
+    - url: "http://vmsingle-vm-backend.monitoring-system.svc.cluster.local:8428/api/v1/write"
+  resources:
+    requests:
+      cpu: "10m"
+      memory: "32Mi"
+    limits:
+      cpu: "100m"
+      memory: "80Mi"
