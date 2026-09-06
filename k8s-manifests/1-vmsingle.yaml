@@ -6,14 +6,14 @@ metadata:
 spec:
   nodeSelector:
     kubernetes.io/hostname: soleimani-ha2
-  retentionPeriod: "7d"
+  retentionPeriod: "14d"
   resources:
     requests:
-      cpu: "20m"
-      memory: "64Mi"
+      cpu: "200m"
+      memory: "512Mi"
     limits:
-      cpu: "150m"
-      memory: "256Mi"
+      cpu: "500m"
+      memory: "1Gi"
   storage:
     storageClassName: local-path
     accessModes:

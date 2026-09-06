@@ -12,8 +12,8 @@ spec:
     - url: "http://vmsingle-vm-backend.monitoring-system.svc.cluster.local:8428/api/v1/write"
   resources:
     requests:
-      cpu: "10m"
-      memory: "32Mi"
+      cpu: "50m"
+      memory: "128Mi"
     limits:
-      cpu: "100m"
-      memory: "80Mi"
+      cpu: "200m"
+      memory: "256Mi"

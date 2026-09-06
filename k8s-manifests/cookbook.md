@@ -45,3 +45,6 @@ kubectl apply -f 7-grafana.yaml
 
 # Apply Ingress rules to expose Grafana and VMAuth endpoints via Traefik
 kubectl apply -f 8-ingress.yaml
+
+# Configure VMAgent to scrape VictoriaMetrics components
+kubectl apply -f 9-vm-scrapes.yaml

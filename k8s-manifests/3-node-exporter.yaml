@@ -33,11 +33,11 @@ spec:
               name: metrics
           resources:
             requests:
-              cpu: "5m"
-              memory: "16Mi"
+              cpu: "10m"
+              memory: "32Mi"
             limits:
-              cpu: "50m"
-              memory: "35Mi"
+              cpu: "100m"
+              memory: "64Mi"
           volumeMounts:
             - name: proc
               mountPath: /host/proc
