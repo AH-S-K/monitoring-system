@@ -1,0 +1,315 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alert-viewer-source
+  namespace: monitoring-system
+data:
+  main.go: |
+    package main
+
+    import (
+    	"context"
+    	"encoding/json"
+    	"fmt"
+    	"html"
+    	"log"
+    	"net/http"
+    	"os"
+    	"os/signal"
+    	"sync"
+    	"syscall"
+    	"time"
+    )
+
+    type AlertPayload struct {
+    	Receiver string `json:"receiver"`
+    	Status   string `json:"status"`
+    	Alerts   []struct {
+    		Status      string            `json:"status"`
+    		Labels      map[string]string `json:"labels"`
+    		Annotations map[string]string `json:"annotations"`
+    		StartsAt    string            `json:"startsAt"`
+    	} `json:"alerts"`
+    }
+
+    var (
+    	mu     sync.Mutex
+    	alerts []string
+    )
+
+    func webhookHandler(w http.ResponseWriter, r *http.Request) {
+    	if r.Method != http.MethodPost {
+    		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+    		return
+    	}
+
+    	defer r.Body.Close()
+
+    	r.Body = http.MaxBytesReader(w, r.Body, 512*1024)
+
+    	var payload AlertPayload
+    	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+    		http.Error(w, "Invalid payload or body too large", http.StatusBadRequest)
+    		return
+    	}
+
+    	var newEntries []string
+    	now := time.Now().UTC().Format("2006-01-02 15:04:05 UTC")
+
+    	for _, a := range payload.Alerts {
+    		status := a.Status
+    		if status == "" {
+    			status = payload.Status
+    		}
+
+    		if status != "firing" {
+    			continue
+    		}
+
+    		alertName := a.Labels["alertname"]
+    		summary := a.Annotations["summary"]
+    		if summary == "" {
+    			summary = a.Annotations["description"]
+    		}
+
+    		var startedAtStr string
+    		if a.StartsAt != "" {
+    			if pt, err := time.Parse(time.RFC3339Nano, a.StartsAt); err == nil {
+    				startedAtStr = fmt.Sprintf(" (Active since: %s)", pt.UTC().Format("15:04:05 UTC"))
+    			} else if pt, err := time.Parse(time.RFC3339, a.StartsAt); err == nil {
+    				startedAtStr = fmt.Sprintf(" (Active since: %s)", pt.UTC().Format("15:04:05 UTC"))
+    			}
+    		}
+
+    		entry := fmt.Sprintf("[%s] [FIRING] %s: %s%s", now, alertName, summary, startedAtStr)
+    		newEntries = append(newEntries, entry)
+    	}
+
+    	if len(newEntries) > 0 {
+    		mu.Lock()
+
+    		alerts = append(newEntries, alerts...)
+    		if len(alerts) > 60 {
+    			alerts = alerts[:60]
+    		}
+    		mu.Unlock()
+    	}
+
+    	w.Header().Set("Content-Type", "application/json")
+    	w.WriteHeader(http.StatusOK)
+    	w.Write([]byte(`{"status":"ok"}`))
+    }
+
+    func alertPageHandler(w http.ResponseWriter, r *http.Request) {
+    	mu.Lock()
+    	alertsCopy := make([]string, len(alerts))
+    	copy(alertsCopy, alerts)
+    	count := len(alertsCopy)
+    	mu.Unlock()
+
+
+    	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+    	w.Header().Set("X-Content-Type-Options", "nosniff")
+    	w.Header().Set("X-Frame-Options", "DENY")
+    	w.Header().Set("Referrer-Policy", "no-referrer")
+    	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'")
+
+    	fmt.Fprintf(w, `<!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="refresh" content="10">
+        <title>Active Alerts (Stack Limit: 60)</title>
+        <style>
+            body { background: #0f172a; color: #f8fafc; font-family: monospace; padding: 25px; line-height: 1.5; }
+            h1 { color: #38bdf8; font-size: 20px; margin-bottom: 6px; border-bottom: 1px solid #334155; padding-bottom: 10px; }
+            .meta { color: #94a3b8; font-size: 13px; margin-bottom: 20px; }
+            .stack { display: flex; flex-direction: column; gap: 8px; }
+            .card { background: #1e293b; padding: 10px 14px; border-radius: 6px; border-left: 4px solid #ef4444; font-size: 13px; word-break: break-word; }
+            .card:first-child { border-left-color: #22c55e; background: #1e293b; box-shadow: 0 0 12px rgba(34, 197, 94, 0.2); }
+            .index { color: #64748b; font-weight: bold; margin-right: 10px; }
+            .empty { color: #64748b; font-style: italic; }
+        </style>
+    </head>
+    <body>
+        <h1>VictoriaMetrics Active Alert Stack (Max: 60)</h1>
+        <div class="meta">Auto-Refresh: Every 10s | Total in Stack: %d / 60 | [Line 1 = Newest]</div>
+        <div class="stack">`, count)
+
+    	if count == 0 {
+    		fmt.Fprintf(w, `<div class="empty">No alerts received yet. Waiting for incoming 1-minute alert from VMAlert...</div>`)
+    	} else {
+    		for i, line := range alertsCopy {
+    			fmt.Fprintf(w, `<div class="card"><span class="index">#%02d</span>%s</div>`, i+1, html.EscapeString(line))
+    		}
+    	}
+
+    	fmt.Fprintf(w, `</div></body></html>`)
+    }
+
+    func healthzHandler(w http.ResponseWriter, r *http.Request) {
+    	w.WriteHeader(http.StatusOK)
+    	w.Write([]byte("ok"))
+    }
+
+    func main() {
+    	mux := http.NewServeMux()
+    	mux.HandleFunc("/webhook", webhookHandler)
+    	mux.HandleFunc("/alert", alertPageHandler)
+    	mux.HandleFunc("/healthz", healthzHandler)
+    	mux.HandleFunc("/", alertPageHandler)
+
+    	server := &http.Server{
+    		Addr:              ":8080",
+    		Handler:           mux,
+    		ReadHeaderTimeout: 5 * time.Second,
+    		ReadTimeout:       10 * time.Second,
+    		WriteTimeout:      10 * time.Second,
+    		IdleTimeout:       15 * time.Second,
+    	}
+
+    	go func() {
+    		log.Println("Hardened Alert-Viewer server listening on :8080")
+    		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+    			log.Fatalf("Server failed to start: %v", err)
+    		}
+    	}()
+
+
+    	stop := make(chan os.Signal, 1)
+    	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+    	<-stop
+
+    	log.Println("Shutting down server gracefully...")
+    	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    	defer cancel()
+    	if err := server.Shutdown(ctx); err != nil {
+    		log.Fatalf("Server forced to shutdown: %v", err)
+    	}
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alert-viewer
+  namespace: monitoring-system
+  labels:
+    app: alert-viewer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alert-viewer
+  template:
+    metadata:
+      labels:
+        app: alert-viewer
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        fsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+
+      volumes:
+        - name: app-bin
+          emptyDir:
+            sizeLimit: 100Mi
+        - name: tmp-dir
+          emptyDir:
+            sizeLimit: 500Mi
+        - name: source-code
+          configMap:
+            name: alert-viewer-source
+
+      initContainers:
+        - name: build-go-server
+          image: golang:1.27.1-alpine3.24
+          env:
+            - name: GOCACHE
+              value: /tmp/.cache
+            - name: GOTMPDIR
+              value: /tmp
+          command:
+            - sh
+            - -c
+            - |
+              mkdir -p /tmp/.cache
+              CGO_ENABLED=0 go build -ldflags='-s -w' -o /app/server /src/main.go
+              rm -rf /tmp/.cache /tmp/*
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 1000m
+              memory: 128Mi
+            limits:
+              cpu: 2000m
+              memory: 512Mi
+          volumeMounts:
+            - name: source-code
+              mountPath: /src
+            - name: app-bin
+              mountPath: /app
+            - name: tmp-dir
+              mountPath: /tmp
+
+      containers:
+        - name: server
+          image: alpine:3.24
+          command: ["/app/server"]
+          ports:
+            - containerPort: 8080
+              name: http
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: "10m"
+              memory: "16Mi"
+            limits:
+              cpu: "50m"
+              memory: "32Mi"
+          volumeMounts:
+            - name: app-bin
+              mountPath: /app
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alert-viewer
+  namespace: monitoring-system
+  labels:
+    app: alert-viewer
+spec:
+  type: ClusterIP
+  selector:
+    app: alert-viewer
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080

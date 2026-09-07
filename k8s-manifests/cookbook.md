@@ -19,32 +19,44 @@ helm upgrade --install vm-operator vm/victoria-metrics-operator \
   --set operator.resources.limits.cpu=250m \
   --set operator.resources.limits.memory=128Mi
 
-# Apply secrets required by Grafana and VMAuth
+# 0. Apply secrets required by Grafana and VMAuth
 kubectl apply -f 0.secrets.yaml
 
-# Deploy the core VictoriaMetrics single-node database
+# 1. Deploy the core VictoriaMetrics single-node database
 kubectl apply -f 1-vmsingle.yaml
 
-# Deploy VMAgent to scrape and remote-write metrics
+# 2. Deploy VMAgent to scrape and remote-write metrics
 kubectl apply -f 2-vmagent.yaml
 
-# Deploy Node Exporter DaemonSet for host-level metrics
+# 3. Deploy Node Exporter DaemonSet for host-level metrics
 kubectl apply -f 3-node-exporter.yaml
 
-# Configure VMAgent to scrape the Django backend metrics
+# 4. Configure VMAgent to scrape the Django backend metrics
 kubectl apply -f 4-django-vmscrape.yaml
 
-# Deploy VMAuth gateway and configure the admin user routing
+# 5. Deploy VMAuth gateway and configure secure routing with prioritized /alert path
 kubectl apply -f 5-vmauth-security.yaml
 
-# Deploy kube-state-metrics for Kubernetes cluster state metrics
+# 6. Deploy kube-state-metrics for Kubernetes cluster state metrics
 kubectl apply -f 6-kube-state-metrics.yaml
 
-# Deploy Grafana with persistent storage, sub-path configuration, and datasource provisioning
+# 7. Deploy Grafana with persistent storage, sub-path configuration, and datasource provisioning
 kubectl apply -f 7-grafana.yaml
 
-# Apply Ingress rules to expose Grafana and VMAuth endpoints via Traefik
+# 8. Apply Ingress rules to expose Grafana and VMAuth endpoints via Traefik
 kubectl apply -f 8-ingress.yaml
 
-# Configure VMAgent to scrape VictoriaMetrics components
+# 9. Configure VMAgent to scrape VictoriaMetrics components (using targetPort 8080)
 kubectl apply -f 9-vm-scrapes.yaml
+
+# 10. Deploy VMAlert engine to evaluate rules against VictoriaMetrics
+kubectl apply -f 10-vmalert.yaml
+
+# 11. Deploy VMAlertmanager to handle alert notifications and routing
+kubectl apply -f 11-alertmanager.yaml
+
+# 12. Deploy alerting rules configuration (VMRule)
+kubectl apply -f 12-vmrule.yaml
+
+# 13. Deploy lightweight Alert-Viewer Go webhook server
+kubectl apply -f 13-alert-viewer.yaml

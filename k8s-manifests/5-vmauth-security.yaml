@@ -9,11 +9,14 @@ spec:
     name: monitoring-secrets
     key: VM_ADMIN_PASSWORD
   targetRefs:
+    - static:
+        url: "http://alert-viewer.monitoring-system.svc.cluster.local:8080"
+      paths: ["^/alert.*"]
     - crd:
         kind: VMSingle
         name: vm-backend
         namespace: monitoring-system
-      paths: ["/api/v1/.*", "/vmui.*", "/prometheus/.*", "/"]
+      paths: ["/api/v1/.*", "/vmui.*", "/prometheus/.*", "^/$"]
 ---
 apiVersion: operator.victoriametrics.com/v1beta1
 kind: VMAuth

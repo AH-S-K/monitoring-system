@@ -1,0 +1,17 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: django-always-firing-rule
+  namespace: monitoring-system
+spec:
+  groups:
+    - name: django.alerts
+      rules:
+        - alert: DjangoApiAlwaysFiring
+          expr: up{app="django-api",job="django-api"} == 1
+          for: 0s
+          labels:
+            severity: critical
+          annotations:
+            summary: "Django API is UP (Always-Firing Alert)"
+            description: "Django API instance is active and reported as UP by vmagent."

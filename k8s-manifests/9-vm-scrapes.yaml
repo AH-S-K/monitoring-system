@@ -1,35 +1,17 @@
 apiVersion: operator.victoriametrics.com/v1beta1
 kind: VMServiceScrape
 metadata:
-  name: vmsingle-scrape
+  name: vmoperator-scrape
   namespace: monitoring-system
   labels:
-    app.kubernetes.io/name: vmsingle
+    app.kubernetes.io/name: victoria-metrics-operator
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: vmsingle
+      app.kubernetes.io/name: victoria-metrics-operator
   jobLabel: app.kubernetes.io/name
   endpoints:
-    - port: http
-      path: /metrics
-      interval: 20s
-      scrapeTimeout: 10s
----
-apiVersion: operator.victoriametrics.com/v1beta1
-kind: VMServiceScrape
-metadata:
-  name: vmagent-scrape
-  namespace: monitoring-system
-  labels:
-    app.kubernetes.io/name: vmagent
-spec:
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: vmagent
-  jobLabel: app.kubernetes.io/name
-  endpoints:
-    - port: http
+    - targetPort: 8080
       path: /metrics
       interval: 20s
       scrapeTimeout: 10s

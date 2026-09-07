@@ -1,0 +1,25 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMAlert
+metadata:
+  name: vmalert
+  namespace: monitoring-system
+spec:
+  replicaCount: 1
+  selectAllByDefault: true
+  evaluationInterval: "20s"
+  datasource:
+    url: "http://vmsingle-vm-backend.monitoring-system.svc.cluster.local:8428"
+  notifiers:
+    - url: "http://vmalertmanager-alertmanager.monitoring-system.svc.cluster.local:9093"
+  extraArgs:
+    http.pathPrefix: "/"
+  externalLabels:
+    cluster: "soleimani-ha"
+    env: "production"
+  resources:
+    requests:
+      cpu: "20m"
+      memory: "48Mi"
+    limits:
+      cpu: "100m"
+      memory: "96Mi"

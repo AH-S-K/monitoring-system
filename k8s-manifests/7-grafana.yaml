@@ -11,54 +11,6 @@ spec:
     requests:
       storage: 1Gi
 ---
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: grafana-datasources
-  namespace: monitoring-system
-data:
-  datasources.yaml: |
-    apiVersion: 1
-    deleteDatasources:
-      - name: VictoriaMetrics
-        orgId: 1
-    datasources:
-      - name: VictoriaMetrics
-        type: prometheus
-        uid: victoriametrics
-        access: proxy
-        orgId: 1
-        url: http://vmauth-vmauth-gateway.monitoring-system.svc.cluster.local:8427
-        basicAuth: true
-        basicAuthUser: admin
-        secureJsonData:
-          basicAuthPassword: "${VM_AUTH_PASSWORD}"
-        isDefault: true
-        editable: true
-        jsonData:
-          timeInterval: 15s
-          httpMethod: POST
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: grafana-dashboards-provisioning
-  namespace: monitoring-system
-data:
-  dashboards.yaml: |
-    apiVersion: 1
-    providers:
-      - name: 'VictoriaMetrics'
-        orgId: 1
-        folder: 'VictoriaMetrics'
-        type: file
-        disableDeletion: false
-        editable: true
-        updateIntervalSeconds: 30
-        allowUiUpdates: true
-        options:
-          path: /var/lib/grafana/dashboards
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -82,26 +34,6 @@ spec:
         kubernetes.io/hostname: soleimani-ha2
       securityContext:
         fsGroup: 472
-      initContainers:
-        - name: fetch-vm-dashboards
-          image: curlimages/curl:8.12.1
-          securityContext:
-            runAsUser: 0
-          command:
-            - "sh"
-            - "-c"
-            - |
-              set -e
-              mkdir -p /var/lib/grafana/dashboards
-              echo "Fetching victoriametrics-single-node dashboard..."
-              curl -fsSL "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/master/dashboards/victoriametrics.json" -o /var/lib/grafana/dashboards/victoriametrics-single.json
-              echo "Fetching victoriametrics-vmagent dashboard..."
-              curl -fsSL "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/master/dashboards/vmagent.json" -o /var/lib/grafana/dashboards/victoriametrics-vmagent.json
-              chown -R 472:472 /var/lib/grafana/dashboards
-              echo "Dashboards ready."
-          volumeMounts:
-            - name: grafana-storage
-              mountPath: /var/lib/grafana
       containers:
         - name: grafana
           image: grafana/grafana:13.2.1
@@ -119,11 +51,6 @@ spec:
                 secretKeyRef:
                   name: monitoring-secrets
                   key: GRAFANA_ADMIN_PASSWORD
-            - name: VM_AUTH_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: monitoring-secrets
-                  key: VM_ADMIN_PASSWORD
             - name: GF_USERS_ALLOW_SIGN_UP
               value: "false"
             - name: GF_SERVER_ROOT_URL
@@ -135,10 +62,6 @@ spec:
             - name: GF_ANALYTICS_CHECK_FOR_UPDATES
               value: "false"
           volumeMounts:
-            - name: datasource-volume
-              mountPath: /etc/grafana/provisioning/datasources
-            - name: dashboard-provisioning-volume
-              mountPath: /etc/grafana/provisioning/dashboards
             - name: grafana-storage
               mountPath: /var/lib/grafana
           resources:
@@ -161,12 +84,6 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 15
       volumes:
-        - name: datasource-volume
-          configMap:
-            name: grafana-datasources
-        - name: dashboard-provisioning-volume
-          configMap:
-            name: grafana-dashboards-provisioning
         - name: grafana-storage
           persistentVolumeClaim:
             claimName: grafana-data

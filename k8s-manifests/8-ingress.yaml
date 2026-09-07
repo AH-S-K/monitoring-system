@@ -18,3 +18,10 @@ spec:
                 name: grafana
                 port:
                   number: 3000
+          - path: /alert
+            pathType: Prefix
+            backend:
+              service:
+                name: vmauth-vmauth-gateway
+                port:
+                  number: 8427
